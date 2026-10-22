@@ -1,4 +1,5 @@
 using OvrTurn.App.Components;
+using OvrTurn.App.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,11 +13,16 @@ var app = builder.Build();
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+    // HSTS tells browsers to only ever contact this site over HTTPS for the next year.
+    // Only enabled outside Development — HSTS in dev would lock localhost into HTTPS.
     app.UseHsts();
 }
+
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
+
+// Security headers must run before anything that writes a response.
+app.UseSecurityHeaders();
 
 app.UseAntiforgery();
 

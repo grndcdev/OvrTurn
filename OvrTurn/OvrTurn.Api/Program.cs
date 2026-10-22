@@ -26,10 +26,10 @@ try
     // Add services to the container.
 
     builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+    // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+    builder.Services.AddOpenApi();
 
-builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddEndpointsApiExplorer();
     // RFC 7807 ProblemDetails for every error response — no stack traces leak to clients.
     builder.Services.AddProblemDetails();
 
@@ -50,41 +50,65 @@ builder.Services.AddEndpointsApiExplorer();
                     QueueLimit = 0
                 }));
     });
+
+    // CORS: only the origins listed in Cors:AllowedOrigins may call this API from a browser.
+    // Values are stored in User Secrets (dev) / Azure Key Vault (prod), never in appsettings.json.
+    var allowedOrigins = builder.Configuration
+        .GetSection("Cors:AllowedOrigins")
+        .Get<string[]>() ?? Array.Empty<string>();
+
+    if (allowedOrigins.Length == 0)
+    {
+        throw new InvalidOperationException(
+            "Cors:AllowedOrigins is not configured. Set it via User Secrets or environment variables.");
+    }
+
+    builder.Services.AddCors(options =>
+    {
+        options.AddDefaultPolicy(policy => policy
+            .WithOrigins(allowedOrigins)
+            .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH")
+            .WithHeaders("Content-Type", "Authorization")
+            .AllowCredentials());
+    });
+
     builder.Services.AddSwaggerGen();
 
-var app = builder.Build();
+    var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-    app.UseSwagger();
-    app.UseSwaggerUI(options =>
+    // Configure the HTTP request pipeline.
+    if (app.Environment.IsDevelopment())
     {
-        options.SwaggerEndpoint("/swagger/v1/swagger.json", "OvrTurn API v1");
-        options.RoutePrefix = "swagger"; // UI at /swagger
-    });
-}
+        app.MapOpenApi();
+        app.UseSwagger();
+        app.UseSwaggerUI(options =>
+        {
+            options.SwaggerEndpoint("/swagger/v1/swagger.json", "OvrTurn API v1");
+            options.RoutePrefix = "swagger"; // UI at /swagger
+        });
+    }
 
-if (!app.Environment.IsDevelopment())
-{
-    app.UseHsts();
-}
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseHsts();
+    }
 
-app.UseHttpsRedirection();
+    app.UseHttpsRedirection();
 
-app.UseSecurityHeaders();
+    app.UseSecurityHeaders();
 
     // Converts unhandled exceptions into ProblemDetails JSON instead of leaking stack traces.
     app.UseExceptionHandler();
     app.UseStatusCodePages();
+
+    app.UseCors();
 
     // Rate limiter must run before endpoint routing hits the endpoint handlers.
     app.UseRateLimiter();
 
     app.UseAuthorization();
 
-app.MapControllers();
+    app.MapControllers();
 
     app.Run();
 }

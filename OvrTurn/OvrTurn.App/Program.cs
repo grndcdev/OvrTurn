@@ -28,28 +28,45 @@ try
 
     builder.Services.AddProblemDetails();
 
+    // Typed HttpClient pointed at the OvrTurn API.
+    // Base URL comes from User Secrets (dev) / Key Vault (prod) — never from appsettings.json.
+    var apiBaseUrl = builder.Configuration["OvrTurnApi:BaseUrl"];
+
+    if (string.IsNullOrWhiteSpace(apiBaseUrl))
+    {
+        throw new InvalidOperationException(
+            "OvrTurnApi:BaseUrl is not configured. Set it via User Secrets or environment variables.");
+    }
+
+    builder.Services.AddHttpClient("OvrTurnApi", client =>
+    {
+        client.BaseAddress = new Uri(apiBaseUrl);
+        client.Timeout = TimeSpan.FromSeconds(10);
+        client.DefaultRequestHeaders.Add("Accept", "application/json");
+    });
+
     var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // HSTS tells browsers to only ever contact this site over HTTPS for the next year.
-    // Only enabled outside Development — HSTS in dev would lock localhost into HTTPS.
-    app.UseHsts();
-}
+    // Configure the HTTP request pipeline.
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseExceptionHandler("/Error", createScopeForErrors: true);
+        // HSTS tells browsers to only ever contact this site over HTTPS for the next year.
+        // Only enabled outside Development — HSTS in dev would lock localhost into HTTPS.
+        app.UseHsts();
+    }
 
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
+    app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+    app.UseHttpsRedirection();
 
-// Security headers must run before anything that writes a response.
-app.UseSecurityHeaders();
+    // Security headers must run before anything that writes a response.
+    app.UseSecurityHeaders();
 
-app.UseAntiforgery();
+    app.UseAntiforgery();
 
-app.MapStaticAssets();
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    app.MapStaticAssets();
+    app.MapRazorComponents<App>()
+        .AddInteractiveServerRenderMode();
 
     app.Run();
 }

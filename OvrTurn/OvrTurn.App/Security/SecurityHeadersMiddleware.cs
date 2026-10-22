@@ -7,8 +7,13 @@
 public sealed class SecurityHeadersMiddleware
 {
     private readonly RequestDelegate _next;
+    private readonly IConfiguration _configuration;
 
-    public SecurityHeadersMiddleware(RequestDelegate next) => _next = next;
+    public SecurityHeadersMiddleware(RequestDelegate next, IConfiguration configuration)
+    {
+        _next = next;
+        _configuration = configuration;
+    }
 
     public async Task InvokeAsync(HttpContext context)
     {
@@ -26,15 +31,17 @@ public sealed class SecurityHeadersMiddleware
         // Opt out of browser features we do not use. Reduces attack surface.
         headers["Permissions-Policy"] = "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()";
 
-        // Content Security Policy — Blazor Server needs 'self' plus inline+eval for its boot script and SignalR.
-        // Tightened later when we lock down scripts.
+        // Read the API URL from config so the CSP can allow the Blazor App to call it.
+        // Lives in User Secrets / Key Vault, never hard-coded.
+        var apiBaseUrl = _configuration["OvrTurnApi:BaseUrl"] ?? string.Empty;
+
         headers["Content-Security-Policy"] =
             "default-src 'self'; " +
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
             "style-src 'self' 'unsafe-inline'; " +
             "img-src 'self' data:; " +
             "font-src 'self'; " +
-            "connect-src 'self' ws: wss:; " +
+            $"connect-src 'self' ws: wss: {apiBaseUrl}; " +
             "frame-ancestors 'none'; " +
             "base-uri 'self'; " +
             "form-action 'self'";

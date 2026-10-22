@@ -1,13 +1,34 @@
 using OvrTurn.App.Components;
 using OvrTurn.App.Security;
+using Serilog;
+using Serilog.Events;
 
-var builder = WebApplication.CreateBuilder(args);
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .WriteTo.File("logs/ovrturn-app-.log", rollingInterval: RollingInterval.Day)
+    .CreateBootstrapLogger();
 
-// Add services to the container.
-builder.Services.AddRazorComponents()
+try
+{
+    var builder = WebApplication.CreateBuilder(args);
+
+    builder.Host.UseSerilog((context, services, configuration) => configuration
+        .ReadFrom.Configuration(context.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext()
+        .WriteTo.Console()
+        .WriteTo.File("logs/ovrturn-app-.log", rollingInterval: RollingInterval.Day));
+
+    // Add services to the container.
+    builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-var app = builder.Build();
+    builder.Services.AddProblemDetails();
+
+    var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -30,4 +51,16 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.Run();
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "OvrTurn.App terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
+
+
+

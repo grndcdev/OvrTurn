@@ -1,15 +1,56 @@
 using OvrTurn.Api.Security;
+using Serilog;
+using Serilog.Events;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 
-var builder = WebApplication.CreateBuilder(args);
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .WriteTo.File("logs/ovrturn-api-.log", rollingInterval: RollingInterval.Day)
+    .CreateBootstrapLogger();
 
-// Add services to the container.
+try
+{
+    var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+    builder.Host.UseSerilog((context, services, configuration) => configuration
+        .ReadFrom.Configuration(context.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext()
+        .WriteTo.Console()
+        .WriteTo.File("logs/ovrturn-api-.log", rollingInterval: RollingInterval.Day));
+
+    // Add services to the container.
+
+    builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+    // RFC 7807 ProblemDetails for every error response — no stack traces leak to clients.
+    builder.Services.AddProblemDetails();
+
+    // Fixed-window rate limiting: 100 requests per minute per client IP.
+    // Returns 429 Too Many Requests when exceeded.
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 100,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                }));
+    });
+    builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
@@ -34,8 +75,24 @@ app.UseHttpsRedirection();
 
 app.UseSecurityHeaders();
 
-app.UseAuthorization();
+    // Converts unhandled exceptions into ProblemDetails JSON instead of leaking stack traces.
+    app.UseExceptionHandler();
+    app.UseStatusCodePages();
+
+    // Rate limiter must run before endpoint routing hits the endpoint handlers.
+    app.UseRateLimiter();
+
+    app.UseAuthorization();
 
 app.MapControllers();
 
-app.Run();
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "OvrTurn.Api terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}

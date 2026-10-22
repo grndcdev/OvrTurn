@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="OvrTurn.Api/OvrTurn.Api.csproj" />
+  <Project Path="OvrTurn.App/OvrTurn.App.csproj" />
+</Solution>
